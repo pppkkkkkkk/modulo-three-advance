@@ -1,0 +1,20 @@
+mode: set
+modulo_three_advanced/mod3/fsm.go:26.77,30.29 2 1
+modulo_three_advanced/mod3/fsm.go:30.29,35.10 3 1
+modulo_three_advanced/mod3/fsm.go:35.10,37.4 1 1
+modulo_three_advanced/mod3/fsm.go:40.3,41.10 2 1
+modulo_three_advanced/mod3/fsm.go:41.10,43.4 1 1
+modulo_three_advanced/mod3/fsm.go:46.3,46.27 1 1
+modulo_three_advanced/mod3/fsm.go:50.2,50.26 1 1
+modulo_three_advanced/mod3/modthree.go:19.29,46.2 2 1
+modulo_three_advanced/mod3/modthree.go:49.41,50.15 1 1
+modulo_three_advanced/mod3/modthree.go:51.15,52.11 1 1
+modulo_three_advanced/mod3/modthree.go:53.15,54.11 1 1
+modulo_three_advanced/mod3/modthree.go:55.15,56.11 1 1
+modulo_three_advanced/mod3/modthree.go:57.10,59.12 1 1
+modulo_three_advanced/mod3/modthree.go:63.33,66.2 1 1
+modulo_three_advanced/mod3/modthree.go:73.47,75.36 1 1
+modulo_three_advanced/mod3/modthree.go:75.36,77.3 1 1
+modulo_three_advanced/mod3/modthree.go:80.2,81.16 2 1
+modulo_three_advanced/mod3/modthree.go:81.16,84.3 1 1
+modulo_three_advanced/mod3/modthree.go:87.2,87.37 1 1
