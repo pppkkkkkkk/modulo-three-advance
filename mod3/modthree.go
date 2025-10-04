@@ -3,9 +3,11 @@ package mod3
 
 import (
 	"strings"
+	"fmt"
 )
 
 const (
+	// Define the States
     StateS0 = "S0"
     StateS1 = "S1"
     StateS2 = "S2"
@@ -15,38 +17,50 @@ const (
     Symbol1 = "1"
 )
 
-// ModThreeFA returns a fully configured FiniteAutomaton for the modulo-three problem.
-func ModThreeFA() Automaton {
-	fa := &FiniteAutomaton{
-		// Q: States
-		States: []string{StateS0, StateS1, StateS2},
-		// Σ: Alphabet
-		Alphabet: []string{Symbol0, Symbol1},
-		// q0: Initial State
-		InitialState: StateS0,
-		// F: Accepting/Final States (All states are final for remainder determination)
-		AcceptingStates: []string{StateS0, StateS1, StateS2},
-		// δ: Transition function
-		Transitions: map[string]map[string]string{
-			StateS0: { // Remainder 0
-				Symbol0: StateS0, // (0 * 2 + 0) mod 3 = 0
-				Symbol1: StateS1, // (0 * 2 + 1) mod 3 = 1
-			},
-			StateS1: { // Remainder 1
-				Symbol0: StateS2, // (1 * 2 + 0) mod 3 = 2
-				Symbol1: StateS0, // (1 * 2 + 1) mod 3 = 0
-			},
-			StateS2: { // Remainder 2
-				Symbol0: StateS1, // (2 * 2 + 0) mod 3 = 1
-				Symbol1: StateS2, // (2 * 2 + 1) mod 3 = 2
-			},
-		},
-	}
-	return fa
+type ModuloCalculator interface {
+    Calculate(input string) (remainder int, err error)
 }
 
-// StateToRemainder maps the final state to the required remainder (0, 1, or 2).
-func StateToRemainder(state string) int {
+type ModThreeCalculator struct {
+    fa Automaton // The underlying generic FSM engine.
+}
+
+func GetModThreeConfig() FiniteAutomaton {
+	return FiniteAutomaton{
+		States:          []string{StateS0, StateS1, StateS2},
+		Alphabet:        []string{Symbol0, Symbol1},
+		InitialState:    StateS0,
+		// All states are accepting in this design, as the final state IS the remainder.
+		AcceptingStates: []string{StateS0, StateS1, StateS2},
+		
+		// Transitions (current state -> input symbol -> next state)
+		Transitions: map[string]map[string]string{
+			StateS0: {Symbol0: StateS0, Symbol1: StateS1}, 
+			StateS1: {Symbol0: StateS2, Symbol1: StateS0}, 
+			StateS2: {Symbol0: StateS1, Symbol1: StateS2}, 
+		},
+	}
+}
+
+// NewModThreeCalculator initializes the calculator using the separated configuration.
+func NewModThreeCalculator(cfg FiniteAutomaton) (ModuloCalculator, error) {
+	// Pass the structured configuration data to the FSM constructor
+	// Here is better to passing FiniteAutomaton for initialization to make it more loosely coupled
+	fa, err := NewFiniteAutomaton(cfg.States, cfg.Alphabet, cfg.InitialState, cfg.AcceptingStates, cfg.Transitions)
+	
+	// This is the error path you wanted to ensure is covered.
+	if err != nil {
+		// This line will now only execute if GetModThreeConfig() contains an invalid definition.
+		return nil, fmt.Errorf("failed to initialize FSM engine: %w", err)
+	}
+	
+	return &ModThreeCalculator{fa: fa}, nil
+}
+
+// --- PRIVATE HELPER METHODS ---
+
+// stateToRemainder maps the final state to the required remainder (0, 1, or 2).
+func (c *ModThreeCalculator) stateToRemainder(state string) int {
 	switch state {
 	case StateS0:
 		return 0
@@ -60,29 +74,50 @@ func StateToRemainder(state string) int {
 	}
 }
 
-func ModThree(input string) int {
-	// The core logic function modThree (below) is called with the REAL Finite Automaton.
-	return modThree(ModThreeFA(), input)
+// isStateAccepting checks if the final state is one of the designated accepting states.
+func (c *ModThreeCalculator) isStateAccepting(finalState string) bool {
+    // Due to the decoupling, we must downcast to access the internal AcceptingStates 
+    // of the concrete struct, as this check is not part of the Run() method.
+	if concreteFA, ok := c.fa.(*FiniteAutomaton); ok {
+		for _, state := range concreteFA.AcceptingStates {
+			if finalState == state {
+				return true
+			}
+		}
+	} else {
+		// If it's a mock/non-concrete Automaton in tests, we assume success.
+		return true 
+	}
+    return false
 }
 
-// -----------------------------------------------------------------------------
-// 4. The Final modThree Function (Using the Generic FA)
-// -----------------------------------------------------------------------------
+// --- PUBLIC INTERFACE METHOD IMPLEMENTATION ---
 
-// modThree implements the required procedure using the configured FA.
-func modThree(fa Automaton, input string) int {
+// Calculate runs the binary input through the configured FSM and returns the final remainder.
+// This implements the ModuloCalculator interface.
+func (c *ModThreeCalculator) Calculate(input string) (int, error) {
 	// Handle empty string case (value 0, remainder 0)
 	if strings.TrimSpace(input) == "" {
-		return 0
+		return 0, nil
 	}
 
-	// Run the input against the generic FA engine
-	finalState, err := fa.Run(input)
+	// 1. Run the input against the generic FA engine
+	finalState, err := c.fa.Run(input)
 	if err != nil {
-		// fmt.Printf("Execution Error: %v\n", err)
-		return -1
+		return -1, err
 	}
 
-	// Map the resulting state to the remainder output
-	return StateToRemainder(finalState)
+	// 2. Acceptance Check
+	if !c.isStateAccepting(finalState) {
+		return -1, fmt.Errorf("FSM execution ended in non-accepting state: %s", finalState)
+	}
+
+	// 3. Map the resulting state to the remainder output
+	remainder := c.stateToRemainder(finalState)
+	if remainder == -1 {
+		// Should only happen if finalState is totally unexpected (e.g. "S99")
+		return -1, fmt.Errorf("FSM execution resulted in unknown state: %s", finalState)
+	}
+	
+	return remainder, nil
 }

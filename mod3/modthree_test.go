@@ -1,12 +1,12 @@
 package mod3
 
 import (
-	"testing"
 	"strings"
-	"errors"
+	"testing"
 )
 
-// MockAutomaton is a mock implementation of the Automaton interface
+// MockAutomaton is retained here for any future isolated component testing, 
+// though the public API tests focus on the concrete implementation.
 type MockAutomaton struct {
 	MockRun func(input string) (finalState string, err error)
 }
@@ -16,179 +16,298 @@ func (m *MockAutomaton) Run(input string) (finalState string, err error) {
 	return m.MockRun(input)
 }
 
-// -----------------------------------------------------------------------------
-// 1. UNIT TEST FOR ModThreeFA (Constructor) & StateToRemainder (Mapper)
-// -----------------------------------------------------------------------------
-
-func TestModThreeFA_Initialization(t *testing.T) {
-	// Use type assertion to access the concrete FiniteAutomaton fields
-	fa := ModThreeFA().(*FiniteAutomaton) 
-
-	// 1. Check Initial State (q0)
-	if fa.InitialState != StateS0 { 
-		t.Errorf("InitialState mismatch. Got %s, want %s", fa.InitialState, StateS0)
-	}
-
-	// 2. Check States (Q)
-	if len(fa.States) != 3 {
-		t.Errorf("States count mismatch. Got %d, want 3 (S0, S1, S2)", len(fa.States))
-	}
-
-	// 3. Check Alphabet (Σ)
-	if len(fa.Alphabet) != 2 {
-		t.Errorf("Alphabet count mismatch. Got %d, want 2 (0, 1)", len(fa.Alphabet))
-	}
-
-	// 4. Check Transitions (δ) Structure size
-	if len(fa.Transitions) != 3 {
-		t.Fatalf("Transitions map size mismatch. Got %d entries, want 3 (for S0, S1, S2)", len(fa.Transitions))
-	}
-	
-	// 5. Check a Representative Transition (S1 on '1' -> S0)
-	// This ensures the core logic mapping is present and correct: (1 * 2 + 1) mod 3 = 0.
-	expectedNextState := StateS0
-	actualNextState, ok := fa.Transitions[StateS1][Symbol1]
-	
-	if !ok {
-		t.Errorf("Transition rule missing for state %s on symbol %s", StateS1, Symbol1)
-	} else if actualNextState != expectedNextState {
-		t.Errorf("Transition S1 on '1' failed. Got %s, want %s", actualNextState, expectedNextState)
+func GetTestModThreeConfig() FiniteAutomaton {
+	return FiniteAutomaton{
+		States:          []string{StateS0, StateS1},
+		Alphabet:        []string{Symbol0},
+		InitialState:    StateS0,
+		// All states are accepting in this design, as the final state IS the remainder.
+		AcceptingStates: []string{StateS0},
+		
+		// Transitions (current state -> input symbol -> next state)
+		Transitions: map[string]map[string]string{
+			StateS0: {Symbol0: StateS1}, 
+			StateS1: {Symbol0: StateS1}, 
+		},
 	}
 }
+// -----------------------------------------------------------------------------
+// 1. UNIT TEST FOR StateToRemainder
+// -----------------------------------------------------------------------------
 
+// TestStateToRemainder is retained as a unit test for the private helper method.
 func TestStateToRemainder(t *testing.T) {
+	// NOTE: We must instantiate a ModThreeCalculator to access its private methods in tests.
+	calc, _ := NewModThreeCalculator(GetModThreeConfig()) 
+	concreteCalc := calc.(*ModThreeCalculator) // Safely assume it's the concrete type for testing private helpers
+
 	tests := []struct {
 		inputState string
 		expected   int
 	}{
-		{StateS0, 0}, 
-		{StateS1, 1}, 
+		{StateS0, 0},
+		{StateS1, 1},
 		{StateS2, 2},
-		{"InvalidState", -1}, 
+		{"InvalidState", -1}, // Ensures the default unknown state handler works
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.inputState, func(t *testing.T) {
-			actual := StateToRemainder(tt.inputState) 
+			actual := concreteCalc.stateToRemainder(tt.inputState) // Call the private method
 			if actual != tt.expected {
-				t.Errorf("StateToRemainder(%s): got %d, want %d", tt.inputState, actual, tt.expected)
+				t.Errorf("stateToRemainder(%s): got %d, want %d", tt.inputState, actual, tt.expected)
 			}
 		})
 	}
 }
 
+
 // -----------------------------------------------------------------------------
-// 2. ISOLATED UNIT TEST FOR modThree CORE LOGIC (Using Mocking)
+// 1. PUBLIC API CONTRACT TESTS (Ensuring correct setup and calculations)
 // -----------------------------------------------------------------------------
 
-func TestModThree_Isolated_ErrorPath(t *testing.T) {
-	expectedError := errors.New("Simulated FSM Failure")
+// TestNewModThreeCalculator verifies the factory function for success and error paths.
+func TestNewModThreeCalculator(t *testing.T) {
+	// Sub-test 1: Successful initialization (Covers success path of the factory)
+	t.Run("Success", func(t *testing.T) {
+		_, err := NewModThreeCalculator(GetModThreeConfig())
+		if err != nil {
+			t.Fatalf("NewModThreeCalculator failed to initialize FSM engine: %v", err)
+		}
+	})
 
-	// 1. Setup Mock FA configured to fail on Run()
-	mockFA := &MockAutomaton{
-		MockRun: func(input string) (string, error) {
-			return "", expectedError // Force Run to return an error
-		},
-	}
+	// Sub-test 2: Initialization failure (Covers the hardcoded error return line)
+	t.Run("FSM_Init_Failure", func(t *testing.T) {
+		// Create an invalid configuration that NewFiniteAutomaton will reject.
+		cfg := GetModThreeConfig()
+		
+		// Invalidate the config by making the transitions empty, which violates DFA rules.
+		cfg.Transitions = make(map[string]map[string]string) 
+		
+		_, err := NewModThreeCalculator(cfg)
+		
+		// Assert that an error was returned.
+		if err == nil {
+			t.Fatal("Expected initialization error due to invalid FSM config, but got nil")
+		}
+		
+		// Assert the error message contains the expected factory wrapper text.
+		expectedErrSubstring := "failed to initialize FSM engine"
+		if !strings.Contains(err.Error(), expectedErrSubstring) {
+			t.Errorf("Expected factory error containing %q, but got %v", expectedErrSubstring, err)
+		}
+	})
 
-	// 2. Call the core logic function directly with the mock
-	actualRemainder := modThree(mockFA, "101") 
-
-	// 3. Assert that the error path returned the expected remainder of -1
-	expectedRemainder := -1
-	if actualRemainder != expectedRemainder {
-		t.Errorf("modThree() error path failed. Got %d, want %d", actualRemainder, expectedRemainder)
-	}
+	// Sub-test 3: Explicit configuration validation failure
+	t.Run("Config_Validation_Failure", func(t *testing.T) {
+		// Set up an obviously invalid configuration: Initial state is not in the States list.
+		cfg := GetModThreeConfig()
+		cfg.States = []string{StateS1, StateS2}
+		cfg.InitialState = StateS0 // S0 is defined, but not included in States Q
+		
+		_, err := NewModThreeCalculator(cfg)
+		
+		if err == nil {
+			t.Fatal("Expected initialization error for invalid config, but got nil")
+		}
+		
+		// Assert the error message contains a substring related to the FSM validation.
+		expectedErrSubstring := "Initial state"
+		if !strings.Contains(err.Error(), expectedErrSubstring) {
+			t.Errorf("Expected validation error containing %q (about the initial state), but got %v", expectedErrSubstring, err)
+		}
+	})
 }
 
-func TestModThree_Isolated_SuccessPath(t *testing.T) {
-	// Test the core success path: finalState -> StateToRemainder(finalState)
-	// We want to simulate the FA ending in StateS2 (remainder 2)
-	expectedState := StateS2
-	expectedRemainder := 2 // StateS2 maps to 2
-
-	// 1. Setup Mock FA configured to successfully return StateS2
-	mockFA := &MockAutomaton{
-		MockRun: func(input string) (string, error) {
-			return expectedState, nil // Force Run to return StateS2 and no error
-		},
+// TestCalculator_ErrorPaths verifies that invalid input results in the specified error contract:
+// a remainder of -1 and a non-nil error.
+func TestCalculator_ErrorPaths(t *testing.T) {
+	calc, err := NewModThreeCalculator(GetModThreeConfig())
+	if err != nil {
+		t.Fatalf("Failed to initialize ModuloCalculator: %v", err)
 	}
 
-	// 2. Call the core logic function directly with the mock
-	actualRemainder := modThree(mockFA, "101") 
-
-	// 3. Assert that the result maps correctly
-	if actualRemainder != expectedRemainder {
-		t.Errorf("modThree() success path failed. Got remainder %d, want %d (mapped from state %s)", actualRemainder, expectedRemainder, expectedState)
-	}
-}
-
-func TestModThree_Isolated_WhitespaceInput(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected int
+		expected int // Should always be -1 on error
 	}{
-		{"Empty String", "", 0},
-		{"Single Space", " ", 0},
-		{"Tabs and Newlines", "\t\n  \r", 0},
+		{"InvalidSymbol_A", "1A0", -1},
+		{"InvalidSymbol_2", "1121", -1},
+		{"InvalidSymbol_Space", "1 0", -1},
+		{"InvalidSymbol_dot", "1.0", -1},
+		{"InvalidSymbol_dash", "1-0", -1},
+		{"InvalidSymbol_newline", "1\n0", -1},
 	}
-
-	// NOTE: We don't even need a fully configured mock here, as the function should return 0 before calling fa.Run.
-	// We use the simplest possible mock just to satisfy the function signature.
-	mockFA := &MockAutomaton{} 
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := modThree(mockFA, tt.input)
+			actual, execErr := calc.Calculate(tt.input)
+
+			// 1. Assert that an error occurred
+			if execErr == nil {
+				t.Fatalf("Calculate(%s) expected an error but got nil (Result: %d)", tt.input, actual)
+			}
+
+			// 2. Assert the required error remainder code is returned
 			if actual != tt.expected {
-				t.Errorf("modThree(%q) whitespace check failed. Got %d, want %d", tt.input, actual, tt.expected)
+				t.Errorf("Calculate(%s) error path failed. Got remainder %d, want %d", tt.input, actual, tt.expected)
 			}
 		})
 	}
 }
 
-// -----------------------------------------------------------------------------
-// 3. INTEGRATION TEST FOR ModThree (Public API)
-// -----------------------------------------------------------------------------
+// TestCalculate_UnknownState explicitly verifies the error path for an FSM result 
+// that cannot be mapped to a remainder (0, 1, or 2).
+func TestCalculate_UnknownState(t *testing.T) {
+    unknownState := "S99"
+    
+    // Setup a mock Automaton that returns a garbage state (S99) and no FSM error.
+    mockFA := &MockAutomaton{
+        MockRun: func(input string) (string, error) {
+            return unknownState, nil 
+        },
+    }
 
-func TestModThree_Correctness(t *testing.T) {
+	// Manually create the calculator with the mock FA, allowing us to test its internal logic.
+	calc := &ModThreeCalculator{fa: mockFA}
+	
+	actualRemainder, actualErr := calc.Calculate("dummy")
+
+	expectedRemainder := -1
+	if actualRemainder != expectedRemainder {
+		t.Errorf("Calculate() unknown state failed. Got remainder %d, want %d", actualRemainder, expectedRemainder)
+	}
+	// Assert the specific "unknown state" error message provided by the user.
+	if actualErr == nil || !strings.Contains(actualErr.Error(), "unknown state") {
+		t.Errorf("Calculate() error mismatch. Expected 'unknown state' error, got: %v", actualErr)
+	}
+}
+
+// TestCalculate_AcceptanceCheck verifies the logic inside Calculate for non-accepting states.
+func TestCalculate_AcceptanceCheck(t *testing.T) {
+    // 1. Configure a concrete FSM that has a valid transition, but terminates in a non-accepting state.
+    // States: {S0, S1}. Initial: S0. Accepting: {S0}.
+    // Transition: S0 on '0' -> S1. (Input "0" results in non-accepting state S1)
+    
+    // We must use a concrete FiniteAutomaton to trigger the downcasting check in Calculate.
+    fa, faErr := NewFiniteAutomaton(
+        []string{StateS0, StateS1}, 
+        []string{Symbol0}, 
+        StateS0, 
+        []string{StateS0}, // Accepting only S0
+        map[string]map[string]string{
+            StateS0: {Symbol0: StateS1}, // Transition to the non-accepting state
+            StateS1: {Symbol0: StateS1}, 
+        },
+    )
+
+    if faErr != nil {
+        t.Fatalf("Failed to create restrictive FiniteAutomaton for test: %v", faErr)
+    }
+    
+    // 2. Initialize the calculator with the restrictive FA.
+    calc := &ModThreeCalculator{fa: fa}
+	
+    // 3. Call Calculate with an input ("0") that forces the FSM to transition to the non-accepting state (S1).
+	actualRemainder, actualErr := calc.Calculate("0") 
+
+	expectedRemainder := -1
+	if actualRemainder != expectedRemainder {
+		t.Errorf("Calculate() acceptance check failed. Got remainder %d, want %d", actualRemainder, expectedRemainder)
+	}
+	if actualErr == nil || !strings.Contains(actualErr.Error(), "non-accepting state") {
+		t.Errorf("Calculate() error mismatch. Expected 'non-accepting state' error, got: %v", actualErr)
+	}
+}
+
+
+// TestCalculator_Correctness tests the public contract (Calculate) with valid binary inputs,
+// including edge cases and large numbers.
+func TestCalculator_Correctness(t *testing.T) {
+	// Initialize the calculator service once for all subsequent tests
+	calc, err := NewModThreeCalculator(GetModThreeConfig())
+	if err != nil {
+		t.Fatalf("Failed to initialize ModuloCalculator: %v", err)
+	}
+
 	thirtyTwoZeros := strings.Repeat("0", 32)
 	thirtyTwoOnes := strings.Repeat("1", 32)
-	
+	sixtyFourZeros := strings.Repeat("0", 64)
+	sixtyFourOnes := strings.Repeat("1", 64)
+
 	tests := []struct {
+		name     string
 		input    string // Binary input
 		expected int    // Expected remainder
-		comment  string // Required third field
 	}{
 		// Edge Cases
-		{"", 0, "Empty string"},
-		{"000101", 2, "Leading zeros (5 mod 3 = 2)"},
-		
-		// Small Value Tests
-		{"1", 1, "1 mod 3 = 1"}, 
-		{"110", 0, "6 mod 3 = 0"},
-		{"101010101", 2, "Binary 341 mod 3 = 2"},
+		{"EmptyString", "", 0},
+		{"LeadingZeros", "000101", 2}, // 5 mod 3 = 2
+		{"SingleZero", "0", 0},
+		{"SingleOne", "1", 1},
 
-		// --- New Medium/Small Tests ---
-        {"101010", 0, "Binary 42 mod 3 = 0"}, 
-        {"1010011", 2, "Binary 83 mod 3 = 2"}, // Test case resulting in remainder 2
-        {"1" + strings.Repeat("0", 8), 1, "2^8 (256) mod 3 = 1"}, // Test power of 2 (even exponent)
+		// Small Value Tests
+		{"Zero", "0", 0},
+		{"One", "1", 1},
+		{"Two", "10", 2},      // 2 mod 3 = 2
+		{"Three", "11", 0},     // 3 mod 3 = 0
+		{"Four", "100", 1},    // 4 mod 3 = 1
+		{"Five", "101", 2},    // 5 mod 3 = 2
+		{"Six", "110", 0},     // 6 mod 3 = 0
+		{"Seven", "111", 1},    // 7 mod 3 = 1
+		{"Eight", "1000", 2},   // 8 mod 3 = 2
+		{"Nine", "1001", 0},    // 9 mod 3 = 0
+		{"Ten", "1010", 1},     // 10 mod 3 = 1
+		{"Binary341", "101010101", 2}, // 341 mod 3 = 2
+		{"Binary42", "101010", 0},     // 42 mod 3 = 0
+		{"2Power8", "1" + strings.Repeat("0", 8), 1}, // 256 mod 3 = 1
 
 		// Large Value Tests
-		{"1" + thirtyTwoZeros, 1, "2^32 mod 3 = 1"}, 
-		{thirtyTwoOnes, 0, "2^32 - 1 mod 3 = 0"}, 
+		{"2Power32", "1" + thirtyTwoZeros, 1},       // 2^32 mod 3 = 1
+		{"32Ones", thirtyTwoOnes, 0},               // (2^32 - 1) mod 3 = 0 (since 2^32 mod 3 = 1, then 1-1 = 0)
+		{"2Power64", "1" + sixtyFourZeros, 1},       // 2^64 mod 3 = 1
+		{"64Ones", sixtyFourOnes, 0},               // (2^64 - 1) mod 3 = 0
 
-		// Huge String Test: 100 repetitions of "10" (200 bits total)
-		{strings.Repeat("10", 100), 2, "Huge 200-bit string mod 3 = 2"},
+		// Alternating patterns
+		{"Alternating10_Short", "1010", 1},         // 10 (binary) = 2, 1010 (binary) = 10, 10 mod 3 = 1
+		{"Alternating01_Short", "0101", 2},         // 0101 (binary) = 5, 5 mod 3 = 2 (initial zeros are effectively ignored)
+		{"Alternating10_Long", strings.Repeat("10", 30), 0}, // 60 bits, should result in 0
+
+		// Powers of 2 close to 3
+		{"2Power1", "10", 2},
+		{"2Power2", "100", 1},
+		{"2Power3", "1000", 2},
+		{"2Power4", "10000", 1},
+		{"2Power5", "100000", 2},
+		{"2Power6", "1000000", 1},
+
+		// Large Value Tests
+		{"2Power32", "1" + thirtyTwoZeros, 1},
+		{"32Ones", thirtyTwoOnes, 0},
+
+		// Stress Test: 100 repetitions of "10" (200 bits total)
+		{"Huge200Bits", strings.Repeat("10", 100), 2},
+		{"LongStringOfOnes", strings.Repeat("1", 20), 0}, // (2^20 - 1) mod 3 = 0
+		{"LongStringOfZerosWithTrailingOne", strings.Repeat("0", 15) + "1", 1}, // 1 mod 3 = 1
+		{"OneFollowedByManyZeros", "1" + strings.Repeat("0", 19), 2}, // 2^19 mod 3 = 2 
+
+		// More mixed patterns
+		{"MixedPattern1", "110101101", 0}, // 429 mod 3 = 0
+		{"MixedPattern2", "100110111", 2}, // 311 mod 3 = 2
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			// This calls the public ModThree(input string) wrapper, testing the entire pipeline.
-			actual := ModThree(tt.input)
+		t.Run(tt.name, func(t *testing.T) {
+			// Call the public interface method
+			actual, execErr := calc.Calculate(tt.input)
+
+			if execErr != nil {
+				t.Errorf("Calculate(%s) failed unexpectedly with error: %v", tt.input, execErr)
+				return
+			}
 			if actual != tt.expected {
-				t.Errorf("ModThree(%s) [%s]: got remainder %d, want %d", tt.input, tt.comment, actual, tt.expected)
+				t.Errorf("Calculate(%s): got remainder %d, want %d", tt.input, actual, tt.expected)
 			}
 		})
 	}

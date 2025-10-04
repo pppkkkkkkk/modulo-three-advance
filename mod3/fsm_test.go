@@ -3,6 +3,7 @@ package mod3
 import (
 	"testing"
 	"errors"
+	"strings"
 )
 
 // setupSimpleFA creates a minimal FSM configuration for testing the Run method's core logic.
@@ -71,6 +72,94 @@ func TestFiniteAutomaton_Run(t *testing.T) {
 				// Only compare error string if the error exists
 				if actualErr == nil || actualErr.Error() != tt.expectedError.Error() {
 					t.Errorf("Run(%q) error mismatch. Got %v, want %v", tt.input, actualErr, tt.expectedError)
+				}
+			}
+		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// 2. UNIT TEST FOR NewFiniteAutomaton
+// -----------------------------------------------------------------------------
+
+func TestNewFiniteAutomaton_Validation(t *testing.T) {
+	// Base valid configuration (Mod 3 FSM)
+	states := []string{StateS0, StateS1, StateS2}
+	alphabet := []string{Symbol0, Symbol1}
+	initialState := StateS0
+	acceptingStates := []string{StateS0, StateS1, StateS2}
+	transitions := map[string]map[string]string{
+		StateS0: {Symbol0: StateS0, Symbol1: StateS1},
+		StateS1: {Symbol0: StateS2, Symbol1: StateS0},
+		StateS2: {Symbol0: StateS1, Symbol1: StateS2},
+	}
+	
+	tests := []struct {
+		name string
+		states []string
+		alphabet []string
+		initialState string
+		acceptingStates []string
+		transitions map[string]map[string]string
+		expectError bool
+		errorContains string
+	}{
+		{
+			name: "Valid Modulo 3 Config (Success)",
+			states: states, alphabet: alphabet, initialState: initialState, acceptingStates: acceptingStates, transitions: transitions,
+			expectError: false,
+		},
+		{
+			name: "Error: Initial State Not in Q",
+			states: states, alphabet: alphabet, initialState: "S99", acceptingStates: acceptingStates, transitions: transitions,
+			expectError: true, errorContains: "Initial state 'S99' is not defined",
+		},
+		{
+			name: "Error: Accepting State Not in Q",
+			states: states, alphabet: alphabet, initialState: initialState, acceptingStates: []string{StateS0, "S99"}, transitions: transitions,
+			expectError: true, errorContains: "Accepting state 'S99' is not defined",
+		},
+		{
+			name: "Error: Missing Transition Rules (State S0 missing)",
+			states: states, alphabet: alphabet, initialState: initialState, acceptingStates: acceptingStates, 
+			transitions: map[string]map[string]string{StateS1: transitions[StateS1], StateS2: transitions[StateS2]}, // S0 removed
+			expectError: true, errorContains: "Missing transition rules for state 'S0'",
+		},
+		{
+			name: "Error: Missing Transition for Symbol (S0 missing '1')",
+			states: states, alphabet: alphabet, initialState: initialState, acceptingStates: acceptingStates, 
+			transitions: map[string]map[string]string{
+				StateS0: {Symbol0: StateS0}, // Symbol1 is missing
+				StateS1: transitions[StateS1], 
+				StateS2: transitions[StateS2],
+			},
+			expectError: true, errorContains: "Missing transition for state 'S0' on symbol '1'",
+		},
+		{
+			name: "Error: Transition Leads to Undefined State",
+			states: states, alphabet: alphabet, initialState: initialState, acceptingStates: acceptingStates, 
+			transitions: map[string]map[string]string{
+				StateS0: {Symbol0: "S99", Symbol1: StateS1}, // S0 on 0 -> S99 (bad state)
+				StateS1: transitions[StateS1], 
+				StateS2: transitions[StateS2],
+			},
+			expectError: true, errorContains: "leads to undefined state 'S99'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewFiniteAutomaton(tt.states, tt.alphabet, tt.initialState, tt.acceptingStates, tt.transitions)
+			
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error containing %q, but got nil", tt.errorContains)
+				} else if !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("Error content mismatch. Got error: %q, but expected it to contain: %q", err.Error(), tt.errorContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Did not expect an error, but got: %v", err)
 				}
 			}
 		})

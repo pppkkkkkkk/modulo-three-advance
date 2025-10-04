@@ -19,7 +19,7 @@ type FiniteAutomaton struct {
 }
 
 // -----------------------------------------------------------------------------
-// 2. Generic FSM API Method: Run
+// Generic FSM API Method: Run
 // -----------------------------------------------------------------------------
 
 // Run processes an input string against the FA configuration and returns the final state.
@@ -48,4 +48,61 @@ func (fa *FiniteAutomaton) Run(input string) (finalState string, err error) {
 
 	// The state after the entire string is processed is the final state.
 	return currentState, nil
+}
+
+func NewFiniteAutomaton(
+    states []string,
+    alphabet []string,
+    initialState string,
+    acceptingStates []string,
+    transitions map[string]map[string]string,
+) (Automaton, error) {
+    fa := &FiniteAutomaton{
+        States: states,
+        Alphabet: alphabet,
+        InitialState: initialState,
+        AcceptingStates: acceptingStates,
+        Transitions: transitions,
+    }
+
+    // --- Create State Set for O(1) Lookups ---
+    stateSet := make(map[string]struct{})
+    for _, s := range states {
+        stateSet[s] = struct{}{}
+    }
+
+    // 1. Validate Initial State is a member of Q
+    if _, ok := stateSet[initialState]; !ok {
+        return nil, fmt.Errorf("FSM Config Error: Initial state '%s' is not defined in the set of States (Q)", initialState)
+    }
+
+    // 2. Validate Accepting States are a subset of Q
+    for _, as := range acceptingStates {
+        if _, ok := stateSet[as]; !ok {
+            return nil, fmt.Errorf("FSM Config Error: Accepting state '%s' is not defined in the set of States (Q)", as)
+        }
+    }
+    
+    // 3. Validate Transition Completeness (DFA property)
+    // Check that every state on every alphabet symbol has a valid transition defined and leads to a valid state.
+    for _, currentState := range states {
+        transitionsFromCurrent, ok := transitions[currentState]
+        if !ok {
+            return nil, fmt.Errorf("FSM Config Error: Missing transition rules for state '%s' (not in δ)", currentState)
+        }
+
+        for _, symbol := range alphabet {
+            nextState, ok := transitionsFromCurrent[symbol]
+            if !ok {
+                return nil, fmt.Errorf("FSM Config Error: Missing transition for state '%s' on symbol '%s'", currentState, symbol)
+            }
+            // Check that the resulting nextState is also a member of Q
+            if _, ok := stateSet[nextState]; !ok {
+                return nil, fmt.Errorf("FSM Config Error: Transition from '%s' on '%s' leads to undefined state '%s'", currentState, symbol, nextState)
+            }
+        }
+    }
+
+    // If all checks pass, return the valid FA
+    return fa, nil
 }
