@@ -9,11 +9,15 @@ import (
 // though the public API tests focus on the concrete implementation.
 type MockAutomaton struct {
 	MockRun func(input string) (finalState string, err error)
+	MockIsAccepting func(state string) bool 
 }
 
 // Run implements the Automaton interface by calling the mock function
 func (m *MockAutomaton) Run(input string) (finalState string, err error) {
 	return m.MockRun(input)
+}
+func (m *MockAutomaton) IsAccepting(input string) bool {
+	return m.MockIsAccepting(input)
 }
 
 func GetTestModThreeConfig() FiniteAutomaton {
@@ -166,6 +170,9 @@ func TestCalculate_UnknownState(t *testing.T) {
     mockFA := &MockAutomaton{
         MockRun: func(input string) (string, error) {
             return unknownState, nil 
+        },
+		MockIsAccepting: func(input string) bool {
+            return true 
         },
     }
 

@@ -6,6 +6,7 @@ import "fmt"
 // of the Run method, allowing different FSM types to be plugged in.
 type Automaton interface {
     Run(input string) (finalState string, err error)
+    IsAccepting(state string) bool 
 }
 
 // FiniteAutomaton (FA) structure
@@ -105,4 +106,13 @@ func NewFiniteAutomaton(
 
     // If all checks pass, return the valid FA
     return fa, nil
+}
+
+func (fa *FiniteAutomaton) IsAccepting(state string) bool {
+    for _, as := range fa.AcceptingStates {
+        if state == as {
+            return true
+        }
+    }
+    return false
 }

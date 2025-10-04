@@ -76,19 +76,7 @@ func (c *ModThreeCalculator) stateToRemainder(state string) int {
 
 // isStateAccepting checks if the final state is one of the designated accepting states.
 func (c *ModThreeCalculator) isStateAccepting(finalState string) bool {
-    // Due to the decoupling, we must downcast to access the internal AcceptingStates 
-    // of the concrete struct, as this check is not part of the Run() method.
-	if concreteFA, ok := c.fa.(*FiniteAutomaton); ok {
-		for _, state := range concreteFA.AcceptingStates {
-			if finalState == state {
-				return true
-			}
-		}
-	} else {
-		// If it's a mock/non-concrete Automaton in tests, we assume success.
-		return true 
-	}
-    return false
+    return c.fa.IsAccepting(finalState) // No type assertion needed!
 }
 
 // --- PUBLIC INTERFACE METHOD IMPLEMENTATION ---
