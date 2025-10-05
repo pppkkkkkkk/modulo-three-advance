@@ -5,11 +5,12 @@ The solution computes the remainder (R) when a binary string (representing an un
 
 ## Project Structure
 modulo_three_advanced/ <br>
-├── mod3/                <-- THE REUSABLE LIBRARY PACKAGE <br>
+├── fsm/                <-- THE REUSABLE LIBRARY PACKAGE <br>
 │   ├── fsm.go           # The generic Finite Automaton engine and interface. <br>
 │   ├── fsm_test.go      # Comprehensive unit tests tests (100% coverage). <br>
+├── mod3/
 │   ├── modthree.go      # The specific Modulo-Three configuration and public API. <br>
-│   └── modthree_test.go # Comprehensive unit tests and integration tests (100% coverage). <br>
+│   └── modthree_test.go # With unit tests and integration tests (100% coverage). <br>
 └── main.go              # Application entry point demonstrating usage. <br>
 
 ## Methodology: Finite Automaton (FA)
@@ -45,10 +46,10 @@ go mod init modulo_three_advanced
 go run main.go
 
 6. Run Unit Tests: (Verifies all logic in the mod3 package)
-go test ./mod3
+go test ./mod3 ./fsm
 
 7. View HTML Coverage Report: (Opens an interactive report in your browser)
-go test -coverprofile=coverage ./mod3
+go test -coverprofile=coverage ./mod3 ./fsm
 go tool cover -html=coverage
 
 *Current Unit Test Coverage for package mod3 is 100%
@@ -80,4 +81,12 @@ go tool cover -html=coverage
 
 ### Assumptions
 1. Go Version: Assumed a modern Go environment (Go 1.18+).
-2. Input Format: Assumed the input string contains only valid binary characters ('0' and '1'). The system detects and rejects any other character (e.g., '2', 'A') by returning an error result of −1.
+2. Input Format: Assumed the invalid input config/input will result an error of −1.
+
+### Future Actions or Considerations
+1. Add Performance Tests
+2. Add Property-Based Tests
+3. Add concurrent access to the same NewModThreeCalculator
+4. Add API or Library or other use case? 
+5. Add Trace to understand for which part 
+6. Add Custom Error Type for cleaner error handling 

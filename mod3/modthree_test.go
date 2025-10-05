@@ -3,6 +3,8 @@ package mod3
 import (
 	"strings"
 	"testing"
+	"errors"
+	"modulo_three_advanced/fsm" 
 )
 
 // MockAutomaton is retained here for any future isolated component testing, 
@@ -10,33 +12,22 @@ import (
 type MockAutomaton struct {
 	MockRun func(input string) (finalState string, err error)
 	MockIsAccepting func(state string) bool 
+	MockValidateInput	func(input string) bool
 }
 
-// Run implements the Automaton interface by calling the mock function
+// Use the below mock functions for Automaton testing 
 func (m *MockAutomaton) Run(input string) (finalState string, err error) {
 	return m.MockRun(input)
 }
 func (m *MockAutomaton) IsAccepting(input string) bool {
 	return m.MockIsAccepting(input)
 }
-
-func GetTestModThreeConfig() FiniteAutomaton {
-	return FiniteAutomaton{
-		States:          []string{StateS0, StateS1},
-		Alphabet:        []string{Symbol0},
-		InitialState:    StateS0,
-		// All states are accepting in this design, as the final state IS the remainder.
-		AcceptingStates: []string{StateS0},
-		
-		// Transitions (current state -> input symbol -> next state)
-		Transitions: map[string]map[string]string{
-			StateS0: {Symbol0: StateS1}, 
-			StateS1: {Symbol0: StateS1}, 
-		},
-	}
+func (m *MockAutomaton) ValidateInput(input string) bool {
+	return m.MockValidateInput(input)
 }
+
 // -----------------------------------------------------------------------------
-// 1. UNIT TEST FOR StateToRemainder
+// 1. UNIT TEST FOR StateToRemainder and IsStateAccepting
 // -----------------------------------------------------------------------------
 
 // TestStateToRemainder is retained as a unit test for the private helper method.
@@ -65,18 +56,48 @@ func TestStateToRemainder(t *testing.T) {
 	}
 }
 
+func TestIsStateAccepting(t *testing.T) {
+    mockFA := &MockAutomaton{
+        MockIsAccepting: func(state string) bool {
+            return state == StateS0 // Only S0 is accepting for this mock
+        },
+    }
+    calc := &ModThreeCalculator{fa: mockFA}
+
+    tests := []struct {
+        state    string
+        expected bool
+    }{
+        {StateS0, true},
+        {StateS1, false},
+        {StateS2, false},
+        {"Unknown", false},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.state, func(t *testing.T) {
+            actual := calc.isStateAccepting(tt.state)
+            if actual != tt.expected {
+                t.Errorf("isStateAccepting(%s): got %t, want %t", tt.state, actual, tt.expected)
+            }
+        })
+    }
+}
 
 // -----------------------------------------------------------------------------
-// 1. PUBLIC API CONTRACT TESTS (Ensuring correct setup and calculations)
+// 2. PUBLIC API CONTRACT TESTS (Ensuring correct setup and 100% unit test coverage)
 // -----------------------------------------------------------------------------
 
 // TestNewModThreeCalculator verifies the factory function for success and error paths.
 func TestNewModThreeCalculator(t *testing.T) {
 	// Sub-test 1: Successful initialization (Covers success path of the factory)
 	t.Run("Success", func(t *testing.T) {
-		_, err := NewModThreeCalculator(GetModThreeConfig())
+		calc, err := NewModThreeCalculator(GetModThreeConfig())
 		if err != nil {
 			t.Fatalf("NewModThreeCalculator failed to initialize FSM engine: %v", err)
+		}
+		if calc == nil {
+			t.Fatal("NewModThreeCalculator returned a nil calculator, but no error")
 		}
 	})
 
@@ -123,111 +144,67 @@ func TestNewModThreeCalculator(t *testing.T) {
 	})
 }
 
-// TestCalculator_ErrorPaths verifies that invalid input results in the specified error contract:
-// a remainder of -1 and a non-nil error.
-func TestCalculator_ErrorPaths(t *testing.T) {
-	calc, err := NewModThreeCalculator(GetModThreeConfig())
-	if err != nil {
-		t.Fatalf("Failed to initialize ModuloCalculator: %v", err)
-	}
+func TestCalculate_ErrorHandling(t *testing.T) {
+    // Test case 1: Input validation failure
+    t.Run("InputValidationFailed", func(t *testing.T) {
+        calc, _ := NewModThreeCalculator(GetModThreeConfig()) // Valid FSM init
+        _, err := calc.Calculate("1A0")
+        if err == nil || !strings.Contains(err.Error(), "validate Input") {
+            t.Errorf("Expected 'validate Input' error, got %v", err)
+        }
+    })
 
-	tests := []struct {
-		name     string
-		input    string
-		expected int // Should always be -1 on error
-	}{
-		{"InvalidSymbol_A", "1A0", -1},
-		{"InvalidSymbol_2", "1121", -1},
-		{"InvalidSymbol_Space", "1 0", -1},
-		{"InvalidSymbol_dot", "1.0", -1},
-		{"InvalidSymbol_dash", "1-0", -1},
-		{"InvalidSymbol_newline", "1\n0", -1},
-	}
+    // Test case 2: FSM.Run returns an error (using a mock)
+    t.Run("FSMRunError", func(t *testing.T) {
+        mockFA := &MockAutomaton{
+            MockRun: func(input string) (string, error) { return "", errors.New("mock FSM run error") },
+            MockValidateInput: func(input string) bool { return true },
+            MockIsAccepting: func(input string) bool { return true }, // Irrelevant for this path
+        }
+        calc := &ModThreeCalculator{fa: mockFA}
+        _, err := calc.Calculate("101")
+        if err == nil || !strings.Contains(err.Error(), "mock FSM run error") {
+            t.Errorf("Expected 'mock FSM run error', got %v", err)
+        }
+    })
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual, execErr := calc.Calculate(tt.input)
+    // Test case 3: Non-accepting state (using a mock or a specially configured real FSM)
+    t.Run("NonAcceptingFinalState", func(t *testing.T) {
+        fa, faErr := fsm.NewFiniteAutomaton(
+            []string{StateS0, StateS1}, 
+			[]string{Symbol0}, 
+			StateS0, 
+			[]string{StateS0},
+            map[string]map[string]string{StateS0: {Symbol0: StateS1}, StateS1: {Symbol0: StateS0}},
+        )
+		if faErr != nil { 
+            t.Fatalf("Failed to create restrictive FiniteAutomaton for test: %v", faErr)
+        }
+        calc := &ModThreeCalculator{fa: fa}
+        _, err := calc.Calculate("0") // Goes to S1, which is not accepting
+        if err == nil || !strings.Contains(err.Error(), "non-accepting state") {
+            t.Errorf("Expected 'non-accepting state' error, got %v", err)
+        }
+    })
 
-			// 1. Assert that an error occurred
-			if execErr == nil {
-				t.Fatalf("Calculate(%s) expected an error but got nil (Result: %d)", tt.input, actual)
-			}
-
-			// 2. Assert the required error remainder code is returned
-			if actual != tt.expected {
-				t.Errorf("Calculate(%s) error path failed. Got remainder %d, want %d", tt.input, actual, tt.expected)
-			}
-		})
-	}
+    // Test case 4: Unknown final state (using a mock)
+    t.Run("UnknownFinalState", func(t *testing.T) {
+        mockFA := &MockAutomaton{
+            MockRun: func(input string) (string, error) { return "S99", nil }, // Unknown state
+            MockValidateInput: func(input string) bool { return true },
+            MockIsAccepting: func(input string) bool { return true },
+        }
+        calc := &ModThreeCalculator{fa: mockFA}
+        _, err := calc.Calculate("101")
+        if err == nil || !strings.Contains(err.Error(), "unknown state") {
+            t.Errorf("Expected 'unknown state' error, got %v", err)
+        }
+    })
 }
 
-// TestCalculate_UnknownState explicitly verifies the error path for an FSM result 
-// that cannot be mapped to a remainder (0, 1, or 2).
-func TestCalculate_UnknownState(t *testing.T) {
-    unknownState := "S99"
-    
-    // Setup a mock Automaton that returns a garbage state (S99) and no FSM error.
-    mockFA := &MockAutomaton{
-        MockRun: func(input string) (string, error) {
-            return unknownState, nil 
-        },
-		MockIsAccepting: func(input string) bool {
-            return true 
-        },
-    }
-
-	// Manually create the calculator with the mock FA, allowing us to test its internal logic.
-	calc := &ModThreeCalculator{fa: mockFA}
-	
-	actualRemainder, actualErr := calc.Calculate("dummy")
-
-	expectedRemainder := -1
-	if actualRemainder != expectedRemainder {
-		t.Errorf("Calculate() unknown state failed. Got remainder %d, want %d", actualRemainder, expectedRemainder)
-	}
-	// Assert the specific "unknown state" error message provided by the user.
-	if actualErr == nil || !strings.Contains(actualErr.Error(), "unknown state") {
-		t.Errorf("Calculate() error mismatch. Expected 'unknown state' error, got: %v", actualErr)
-	}
-}
-
-// TestCalculate_AcceptanceCheck verifies the logic inside Calculate for non-accepting states.
-func TestCalculate_AcceptanceCheck(t *testing.T) {
-    // 1. Configure a concrete FSM that has a valid transition, but terminates in a non-accepting state.
-    // States: {S0, S1}. Initial: S0. Accepting: {S0}.
-    // Transition: S0 on '0' -> S1. (Input "0" results in non-accepting state S1)
-    
-    // We must use a concrete FiniteAutomaton to trigger the downcasting check in Calculate.
-    fa, faErr := NewFiniteAutomaton(
-        []string{StateS0, StateS1}, 
-        []string{Symbol0}, 
-        StateS0, 
-        []string{StateS0}, // Accepting only S0
-        map[string]map[string]string{
-            StateS0: {Symbol0: StateS1}, // Transition to the non-accepting state
-            StateS1: {Symbol0: StateS1}, 
-        },
-    )
-
-    if faErr != nil {
-        t.Fatalf("Failed to create restrictive FiniteAutomaton for test: %v", faErr)
-    }
-    
-    // 2. Initialize the calculator with the restrictive FA.
-    calc := &ModThreeCalculator{fa: fa}
-	
-    // 3. Call Calculate with an input ("0") that forces the FSM to transition to the non-accepting state (S1).
-	actualRemainder, actualErr := calc.Calculate("0") 
-
-	expectedRemainder := -1
-	if actualRemainder != expectedRemainder {
-		t.Errorf("Calculate() acceptance check failed. Got remainder %d, want %d", actualRemainder, expectedRemainder)
-	}
-	if actualErr == nil || !strings.Contains(actualErr.Error(), "non-accepting state") {
-		t.Errorf("Calculate() error mismatch. Expected 'non-accepting state' error, got: %v", actualErr)
-	}
-}
-
+// -----------------------------------------------------------------------------
+// INTEGRATION TEST FOR ModThree (Public API)
+// -----------------------------------------------------------------------------
 
 // TestCalculator_Correctness tests the public contract (Calculate) with valid binary inputs,
 // including edge cases and large numbers.

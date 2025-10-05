@@ -1,4 +1,4 @@
-package mod3
+package fsm
 
 import "fmt"
 
@@ -7,15 +7,16 @@ import "fmt"
 type Automaton interface {
     Run(input string) (finalState string, err error)
     IsAccepting(state string) bool 
+    ValidateInput(input string) bool
 }
 
 // FiniteAutomaton (FA) structure
 // Represents the 5-tuple: (Q, Σ, q0, F, δ)
 type FiniteAutomaton struct {
-	States           []string                   // Q: Set of states (S0, S1, S2)
-	Alphabet         []string                   // Σ: Input alphabet ('0', '1')
+	States           map[string]bool            // Q: Set of states (S0, S1, S2)
+	Alphabet         map[string]bool            // Σ: Input alphabet ('0', '1')
 	InitialState     string                     // q0: Initial state (S0)
-	AcceptingStates  []string                   // F: Set of accepting states (S0, S1, S2 for our use case)
+	AcceptingStates  map[string]bool            // F: Set of accepting states (S0, S1, S2 for our use case)
 	Transitions map[string]map[string]string	// δ: Transition function: map[CurrentState]map[InputSymbol]NextState
 }
 
@@ -58,18 +59,27 @@ func NewFiniteAutomaton(
     acceptingStates []string,
     transitions map[string]map[string]string,
 ) (Automaton, error) {
-    fa := &FiniteAutomaton{
-        States: states,
-        Alphabet: alphabet,
-        InitialState: initialState,
-        AcceptingStates: acceptingStates,
-        Transitions: transitions,
-    }
 
-    // --- Create State Set for O(1) Lookups ---
-    stateSet := make(map[string]struct{})
-    for _, s := range states {
-        stateSet[s] = struct{}{}
+    // Create map representations for O(1) lookups
+	stateSet := make(map[string]bool)
+	for _, s := range states {
+		stateSet[s] = true
+	}
+	alphaSet := make(map[string]bool)
+	for _, a := range alphabet {
+		alphaSet[a] = true
+	}
+	acceptingSet := make(map[string]bool)
+	for _, f := range acceptingStates {
+		acceptingSet[f] = true
+	}
+
+    fa := &FiniteAutomaton{
+        States: stateSet,
+        Alphabet: alphaSet,
+        InitialState: initialState,
+        AcceptingStates: acceptingSet,
+        Transitions: transitions,
     }
 
     // 1. Validate Initial State is a member of Q
@@ -109,10 +119,26 @@ func NewFiniteAutomaton(
 }
 
 func (fa *FiniteAutomaton) IsAccepting(state string) bool {
-    for _, as := range fa.AcceptingStates {
-        if state == as {
-            return true
-        }
+    if _, exists := fa.AcceptingStates[state]; !exists {
+        return false
     }
-    return false
+    return true
+}
+
+// Iterate over the input string, which naturally iterates over runes (characters).
+func (fa *FiniteAutomaton) ValidateInput(input string) bool {
+	for _, char := range input {
+		// Convert the rune to the Symbol type (string) for map lookup.
+		symbol := string(char)
+
+		// Check for the symbol's existence in the alphabet map (O(1) lookup).
+		// If the symbol is not found, the `exists` variable will be false.
+		if _, exists := fa.Alphabet[symbol]; !exists {
+			// If a single character is not in the alphabet, the input is invalid.
+			return false 
+		}
+	}
+	
+	// If the loop completes, every symbol in the input is valid.
+	return true
 }

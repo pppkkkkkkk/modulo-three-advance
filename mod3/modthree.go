@@ -4,6 +4,7 @@ package mod3
 import (
 	"strings"
 	"fmt"
+	"modulo_three_advanced/fsm" 
 )
 
 const (
@@ -22,11 +23,19 @@ type ModuloCalculator interface {
 }
 
 type ModThreeCalculator struct {
-    fa Automaton // The underlying generic FSM engine.
+    fa fsm.Automaton // The underlying generic FSM engine.
 }
 
-func GetModThreeConfig() FiniteAutomaton {
-	return FiniteAutomaton{
+type ModThreeFSMConfig struct {
+	States          []string
+	Alphabet        []string
+	InitialState    string
+	AcceptingStates []string
+	Transitions     map[string]map[string]string
+}
+
+func GetModThreeConfig() ModThreeFSMConfig {
+	return ModThreeFSMConfig{
 		States:          []string{StateS0, StateS1, StateS2},
 		Alphabet:        []string{Symbol0, Symbol1},
 		InitialState:    StateS0,
@@ -43,10 +52,9 @@ func GetModThreeConfig() FiniteAutomaton {
 }
 
 // NewModThreeCalculator initializes the calculator using the separated configuration.
-func NewModThreeCalculator(cfg FiniteAutomaton) (ModuloCalculator, error) {
+func NewModThreeCalculator(cfg ModThreeFSMConfig) (ModuloCalculator, error) {
 	// Pass the structured configuration data to the FSM constructor
-	// Here is better to passing FiniteAutomaton for initialization to make it more loosely coupled
-	fa, err := NewFiniteAutomaton(cfg.States, cfg.Alphabet, cfg.InitialState, cfg.AcceptingStates, cfg.Transitions)
+	fa, err := fsm.NewFiniteAutomaton(cfg.States, cfg.Alphabet, cfg.InitialState, cfg.AcceptingStates, cfg.Transitions)
 	
 	// This is the error path you wanted to ensure is covered.
 	if err != nil {
@@ -76,7 +84,7 @@ func (c *ModThreeCalculator) stateToRemainder(state string) int {
 
 // isStateAccepting checks if the final state is one of the designated accepting states.
 func (c *ModThreeCalculator) isStateAccepting(finalState string) bool {
-    return c.fa.IsAccepting(finalState) // No type assertion needed!
+    return c.fa.IsAccepting(finalState)
 }
 
 // --- PUBLIC INTERFACE METHOD IMPLEMENTATION ---
@@ -87,6 +95,10 @@ func (c *ModThreeCalculator) Calculate(input string) (int, error) {
 	// Handle empty string case (value 0, remainder 0)
 	if strings.TrimSpace(input) == "" {
 		return 0, nil
+	}
+
+	if !c.fa.ValidateInput(input) {
+		return -1, fmt.Errorf("FSM execution ended in validate Input: %s", input)
 	}
 
 	// 1. Run the input against the generic FA engine
