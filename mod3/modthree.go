@@ -1,29 +1,28 @@
-
 package mod3
 
 import (
-	"strings"
 	"fmt"
-	"modulo_three_advanced/fsm" 
+	"modulo_three_advanced/fsm"
+	"strings"
 )
 
 const (
 	// Define the States
-    StateS0 = "S0"
-    StateS1 = "S1"
-    StateS2 = "S2"
-    
-    // Define input symbols too
-    Symbol0 = "0"
-    Symbol1 = "1"
+	StateS0 = "S0"
+	StateS1 = "S1"
+	StateS2 = "S2"
+
+	// Define input symbols too
+	Symbol0 = "0"
+	Symbol1 = "1"
 )
 
 type ModuloCalculator interface {
-    Calculate(input string) (remainder int, err error)
+	Calculate(input string) (remainder int, err error)
 }
 
 type ModThreeCalculator struct {
-    fa fsm.Automaton // The underlying generic FSM engine.
+	fa fsm.Automaton // The underlying generic FSM engine.
 }
 
 type ModThreeFSMConfig struct {
@@ -36,17 +35,17 @@ type ModThreeFSMConfig struct {
 
 func GetModThreeConfig() ModThreeFSMConfig {
 	return ModThreeFSMConfig{
-		States:          []string{StateS0, StateS1, StateS2},
-		Alphabet:        []string{Symbol0, Symbol1},
-		InitialState:    StateS0,
+		States:       []string{StateS0, StateS1, StateS2},
+		Alphabet:     []string{Symbol0, Symbol1},
+		InitialState: StateS0,
 		// All states are accepting in this design, as the final state IS the remainder.
 		AcceptingStates: []string{StateS0, StateS1, StateS2},
-		
+
 		// Transitions (current state -> input symbol -> next state)
 		Transitions: map[string]map[string]string{
-			StateS0: {Symbol0: StateS0, Symbol1: StateS1}, 
-			StateS1: {Symbol0: StateS2, Symbol1: StateS0}, 
-			StateS2: {Symbol0: StateS1, Symbol1: StateS2}, 
+			StateS0: {Symbol0: StateS0, Symbol1: StateS1},
+			StateS1: {Symbol0: StateS2, Symbol1: StateS0},
+			StateS2: {Symbol0: StateS1, Symbol1: StateS2},
 		},
 	}
 }
@@ -55,13 +54,13 @@ func GetModThreeConfig() ModThreeFSMConfig {
 func NewModThreeCalculator(cfg ModThreeFSMConfig) (ModuloCalculator, error) {
 	// Pass the structured configuration data to the FSM constructor
 	fa, err := fsm.NewFiniteAutomaton(cfg.States, cfg.Alphabet, cfg.InitialState, cfg.AcceptingStates, cfg.Transitions)
-	
+
 	// This is the error path you wanted to ensure is covered.
 	if err != nil {
 		// This line will now only execute if GetModThreeConfig() contains an invalid definition.
 		return nil, fmt.Errorf("failed to initialize FSM engine: %w", err)
 	}
-	
+
 	return &ModThreeCalculator{fa: fa}, nil
 }
 
@@ -84,7 +83,7 @@ func (c *ModThreeCalculator) stateToRemainder(state string) int {
 
 // isStateAccepting checks if the final state is one of the designated accepting states.
 func (c *ModThreeCalculator) isStateAccepting(finalState string) bool {
-    return c.fa.IsAccepting(finalState)
+	return c.fa.IsAccepting(finalState)
 }
 
 // --- PUBLIC INTERFACE METHOD IMPLEMENTATION ---
@@ -118,6 +117,6 @@ func (c *ModThreeCalculator) Calculate(input string) (int, error) {
 		// Should only happen if finalState is totally unexpected (e.g. "S99")
 		return -1, fmt.Errorf("FSM execution resulted in unknown state: %s", finalState)
 	}
-	
+
 	return remainder, nil
 }

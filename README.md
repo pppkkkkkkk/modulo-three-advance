@@ -8,7 +8,7 @@ modulo_three_advanced/ <br>
 ├── fsm/                <-- THE REUSABLE LIBRARY PACKAGE <br>
 │   ├── fsm.go           # The generic Finite Automaton engine and interface. <br>
 │   ├── fsm_test.go      # Comprehensive unit tests tests (100% coverage). <br>
-├── mod3/
+├── mod3/ <br>
 │   ├── modthree.go      # The specific Modulo-Three configuration and public API. <br>
 │   └── modthree_test.go # With unit tests and integration tests (100% coverage). <br>
 └── main.go              # Application entry point demonstrating usage. <br>
@@ -88,5 +88,9 @@ go tool cover -html=coverage
 2. Add Property-Based Tests
 3. Add concurrent access to the same NewModThreeCalculator
 4. Add API or Library or other use case? 
-5. Add Trace to understand for which part 
+5. Add Trace for easiler debuging
 6. Add Custom Error Type for cleaner error handling 
+
+7. Streaming Input Support
+8. Dynamic Configuration for every request, fully make use of generic fsm
+9. Add Metrics to keep track every runtime performance
